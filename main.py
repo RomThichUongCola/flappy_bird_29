@@ -24,6 +24,7 @@ base_img = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs","base.
 
 gen = 0
 
+
 class Bird:
     MAX_ROTATION = 25
     IMGS = bird_images
@@ -33,7 +34,7 @@ class Bird:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.tilt = 0  # degrees to tilt
+        self.tilt = 0 
         self.tick_count = 0
         self.vel = 0
         self.height = self.y
@@ -48,10 +49,8 @@ class Bird:
     def move(self):
         self.tick_count += 1
 
-        # for downward acceleration
         displacement = self.vel*(self.tick_count) + 0.5*(3)*(self.tick_count)**2  # calculate displacement
 
-        # terminal velocity
         if displacement >= 16:
             displacement = (displacement/abs(displacement)) * 16
 
@@ -228,10 +227,11 @@ def eval_genomes(genomes, config):
     DTmax = 0.01
     scoremax =0.01
     clock = pygame.time.Clock()
-
+    for id,bird in enumerate(birds):
+        bird.DT = 0
     run = True
     while run and len(birds) > 0:
-        clock.tick(30)
+        clock.tick(500)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -245,15 +245,15 @@ def eval_genomes(genomes, config):
             if len(pipes) > 1 and birds[0].x > pipes[0].x + pipes[0].PIPE_TOP.get_width():  # determine whether to use the first or second
                 pipe_ind = 1                                                                 # pipe on the screen for neural network input
         y_passage = pipes[0].height + pipes[0].GAP/2
-        for x, bird in enumerate(birds):  # give each bird a fitness of 0.1 for each frame it stays alive
-            if bird.DT>DTmax:
+        for x, bird in enumerate(birds):
+            bird.DT += 5
+            if bird.DT > DTmax:
                 DTmax=bird.DT
             bird.move()
 
-            # send bird location, top pipe location and bottom pipe location and determine from network whether to jump or not
             output = nets[birds.index(bird)].activate((bird.y, abs(bird.y - pipes[pipe_ind].height), abs(bird.y - pipes[pipe_ind].bottom)))
 
-            if output[0] > 0.5:  # we use a tanh activation function so result will be between -1 and 1. if over 0.5 jump
+            if output[0] > 0.4:
                 bird.jump()
 
         base.move()
@@ -282,8 +282,8 @@ def eval_genomes(genomes, config):
             if score > scoremax: scoremax = score
             # can add this line to give more reward for passing through a pipe (not required)
             pipes.append(Pipe(WIN_WIDTH))
-        for bird in enumerate(bird):
-            ge[birds.index(bird)] = bird.DT/DTmax + score/scoremax -0.08*(bird.y-y_passage)/WIN_HEIGHT
+        for bird in birds:
+            ge[birds.index(bird)].fitness = bird.DT/DTmax + score/scoremax -0.08*(bird.y-y_passage)/WIN_HEIGHT
         for r in rem:
             pipes.remove(r)
 
@@ -294,6 +294,10 @@ def eval_genomes(genomes, config):
                 birds.pop(birds.index(bird))
 
         draw_window(WIN, birds, pipes, base, score, gen, pipe_ind)
+
+        if score > 20:
+            pickle.dump(nets[0],open("best.pickle", "wb"))
+            break
 
 def run(config_file):
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
@@ -307,16 +311,15 @@ def run(config_file):
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
-    #p.add_reporter(neat.Checkpointer(5))
 
-    # Run for up to 50 generations.
     winner = p.run(eval_genomes, 50)
 
     # show final stats
     print('\nBest genome:\n{!s}'.format(winner))
-
+   
 
 if __name__ == '__main__':
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config-feedforward.txt')
+
     run(config_path)
